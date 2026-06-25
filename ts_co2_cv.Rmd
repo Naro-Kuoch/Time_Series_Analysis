@@ -1,6 +1,8 @@
 ---
 title: "Time Series CV CO2"
-output: pdf_document
+output:
+  html_document:
+    df_print: paged
 date: "2026-06-24"
 ---
 
