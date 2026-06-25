@@ -5,103 +5,116 @@ date: "2026-06-24"
 ---
 
 ```{r}
+library(forecast)
 x = co2
-plot(x)
-```
-```{r}
-x_test= window(x,start=c(1997,1))
-x_train = window(x,end = c(1996,12))
-```
-```{r}
-length(x_train)
+# split the last one year for testing 
+test= window(x,start=c(1997,1))
+train = window(x,end = c(1996,12))
+autoplot(train, series="Train")+
+  autolayer(test,series = "Test")
 ```
 
-```{r}
-ses = HoltWinters(x_train,alpha = NULL,beta = FALSE, gamma=FALSE)
-plot(x_train)
+# Cross validation to compare different model
 
-ses_pred = predict(ses,n.ahead=12,prediction.interval=TRUE)
-lines(x_test,col=4)
-lines(ses_pred[,1],col=2)
-lines(ses_pred[,2],col=3)
-lines(ses_pred[,3],col=3)
-```
 ```{r}
 mape = function(forecast,truth){
   return (100*mean(abs(truth-forecast)/truth))
 }
-mape(ses_pred[,"fit"],x_test)
-```
+#initialize datafram to store cv result of models 
+cv_results = data.frame(
+  Model = character(),
+  Fold = integer(),
+  MAPE = numeric(),
+  stringsAsFactors = FALSE
 
+)
 
-```{r}
-library(forecast)
-accuracy(ses_pred,x_test)
-```
-```{r}
-#non seasnonal exponentail smoothing
-non_seasonal = HoltWinters(x_train,alpha = NULL,beta = NULL,gamma = FALSE)
-non_seasonal_pred = predict(non_seasonal,n.ahead=12, prediction.interval = TRUE)
+start_year = start(train)[1]
+end_year = end(train)[1]
 
-plot(x_train)
-lines(x_test,col=4)
-#red
-lines(non_seasonal_pred[,1],col=2)
-#lines(non_seasonal_pred[,2],col=3)
-#lines(non_seasonal_pred[,3],col=3)
-
-mape(non_seasonal_pred[,'fit'],x_test)
-```
-
-```{r}
-#seasonal exponential smoothing 
-
-add_seasonal = HoltWinters(x_train,alpha = NULL,beta = NULL,gamma = NULL)
-add_seasonal_pred = predict(add_seasonal,n.ahead=12, prediction.interval = TRUE)
-
-plot(x_train)
-lines(x_test,col=4)
-#red
-lines(add_seasonal_pred[,1],col=2)
-#lines(non_seasonal_pred[,2],col=3)
-#lines(non_seasonal_pred[,3],col=3)
-
-mape(add_seasonal_pred[,'fit'],x_test)
-```
-
-
-```{r}
-#multiplicative seasonal 
-multi_seasonal = HoltWinters(x_train,alpha = NULL,beta = NULL,gamma = NULL, seasonal = "multi")
-multi_seasonal_pred = predict(multi_seasonal,n.ahead=12, prediction.interval = TRUE)
-
-plot(x_train)
-lines(x_test,col=4)
-#red
-lines(multi_seasonal_pred[,1],col=2)
-#lines(non_seasonal_pred[,2],col=3)
-#lines(non_seasonal_pred[,3],col=3)
-
-mape(multi_seasonal_pred[,'fit'],x_test)
-```
-
-```{r}
-train_start = start(x_train)
-train_end = end(x_train)
-mapes = matrix(data = NA)
-for (i in train_start[1]:(train_end[1]-1)){
-  train_set = window(x_train,end = c(i,12))
-  val_set = window(x_train,start=c(i+1,1),end = c(i+1,12))
+for (i in (start_year+1):(end_year[1]-1)){
+  # the first train fold has 24 observations
+  train_fold = window(train,end = c(i,12))
+  # the validation fold has 12 observation 
+  val_fold = window(train,start=c(i+1,1),end = c(i+1,12))
   
-  
+
+  #Simple exponential smoothing
+  ses = HoltWinters(train_fold,alpha = NULL,beta = FALSE, gamma=FALSE)
+  ses_pred = predict(ses,n.ahead=length(val_fold),)
+  cv_results = rbind( 
+                cv_results,
+                data.frame(
+                  Model = "SES",
+                  Fold = i,
+                  MAPE = mape(ses_pred[,"fit"],val_fold)
+                )
+                )
+  # non seasonal exponential smooth
+  non_seasonal = HoltWinters(train_fold,alpha = NULL,beta = NULL,gamma = FALSE)
+  non_seasonal_pred = predict(non_seasonal,n.ahead=length(val_fold))
+  cv_results = rbind( 
+                cv_results,
+                data.frame(
+                  Model = "non_seasonal",
+                  Fold = i,
+                  MAPE = mape(non_seasonal_pred[,"fit"],val_fold)
+                )
+                )
+  #additive seasonal exponential smoothing 
+  add_seasonal = HoltWinters(train_fold,alpha = NULL,beta = NULL,gamma = NULL)
+  add_seasonal_pred = predict(add_seasonal,n.ahead=length(val_fold))
+  cv_results = rbind( 
+                cv_results,
+                data.frame(
+                  Model = "add_seasonal",
+                  Fold = i,
+                  MAPE = mape(add_seasonal_pred[,"fit"],val_fold)
+                )
+                )
+  #multiplicative seasonal 
+  multi_seasonal = HoltWinters(train_fold,alpha = NULL,beta = NULL,gamma = NULL, seasonal = "multi")
+  multi_seasonal_pred = predict(multi_seasonal,n.ahead=length(val_fold))
+  cv_results = rbind( 
+              cv_results,
+              data.frame(
+                Model = "multi_seasonal",
+                Fold = i,
+                MAPE = mape(multi_seasonal_pred[,"fit"],val_fold)
+              )
+              )
+
 }
-  
 
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+```{r}
+# train the best model with the full trianing set 
+best_model = HoltWinters(train,alpha = NULL,beta = NULL,gamma = NULL, seasonal = "multi")
+# test on the left out dataset
+best_forecast = predict(best_model,n.ahead=length(test))
+mape(best_forecast[,"fit"],test)
 ```
 
 
 ```{r}
-end(x_train)
+autoplot(train, series="Train")+
+  autolayer(test,series = "Test")+
+  autolayer(best_forecast,series = "Forecast")
 ```
 
 
