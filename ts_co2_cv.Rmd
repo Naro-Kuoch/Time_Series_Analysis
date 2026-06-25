@@ -1,0 +1,107 @@
+---
+title: "Time Series CV CO2"
+output: pdf_document
+date: "2026-06-24"
+---
+
+```{r}
+x = co2
+plot(x)
+```
+```{r}
+x_test= window(x,start=c(1997,1))
+x_train = window(x,end = c(1996,12))
+```
+```{r}
+length(x_train)
+```
+
+```{r}
+ses = HoltWinters(x_train,alpha = NULL,beta = FALSE, gamma=FALSE)
+plot(x_train)
+
+ses_pred = predict(ses,n.ahead=12,prediction.interval=TRUE)
+lines(x_test,col=4)
+lines(ses_pred[,1],col=2)
+lines(ses_pred[,2],col=3)
+lines(ses_pred[,3],col=3)
+```
+```{r}
+mape = function(forecast,truth){
+  return (100*mean(abs(truth-forecast)/truth))
+}
+mape(ses_pred[,"fit"],x_test)
+```
+
+
+```{r}
+library(forecast)
+accuracy(ses_pred,x_test)
+```
+```{r}
+#non seasnonal exponentail smoothing
+non_seasonal = HoltWinters(x_train,alpha = NULL,beta = NULL,gamma = FALSE)
+non_seasonal_pred = predict(non_seasonal,n.ahead=12, prediction.interval = TRUE)
+
+plot(x_train)
+lines(x_test,col=4)
+#red
+lines(non_seasonal_pred[,1],col=2)
+#lines(non_seasonal_pred[,2],col=3)
+#lines(non_seasonal_pred[,3],col=3)
+
+mape(non_seasonal_pred[,'fit'],x_test)
+```
+
+```{r}
+#seasonal exponential smoothing 
+
+add_seasonal = HoltWinters(x_train,alpha = NULL,beta = NULL,gamma = NULL)
+add_seasonal_pred = predict(add_seasonal,n.ahead=12, prediction.interval = TRUE)
+
+plot(x_train)
+lines(x_test,col=4)
+#red
+lines(add_seasonal_pred[,1],col=2)
+#lines(non_seasonal_pred[,2],col=3)
+#lines(non_seasonal_pred[,3],col=3)
+
+mape(add_seasonal_pred[,'fit'],x_test)
+```
+
+
+```{r}
+#multiplicative seasonal 
+multi_seasonal = HoltWinters(x_train,alpha = NULL,beta = NULL,gamma = NULL, seasonal = "multi")
+multi_seasonal_pred = predict(multi_seasonal,n.ahead=12, prediction.interval = TRUE)
+
+plot(x_train)
+lines(x_test,col=4)
+#red
+lines(multi_seasonal_pred[,1],col=2)
+#lines(non_seasonal_pred[,2],col=3)
+#lines(non_seasonal_pred[,3],col=3)
+
+mape(multi_seasonal_pred[,'fit'],x_test)
+```
+
+```{r}
+train_start = start(x_train)
+train_end = end(x_train)
+mapes = matrix(data = NA)
+for (i in train_start[1]:(train_end[1]-1)){
+  train_set = window(x_train,end = c(i,12))
+  val_set = window(x_train,start=c(i+1,1),end = c(i+1,12))
+  
+  
+}
+  
+
+```
+
+
+```{r}
+end(x_train)
+```
+
+
