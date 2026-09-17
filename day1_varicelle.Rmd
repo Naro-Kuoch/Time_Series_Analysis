@@ -1,0 +1,30 @@
+---
+title: "Time Series day1"
+output: pdf_document
+date: "2026-06-19"
+---
+
+```{r}
+df = read.csv("varicelle.csv")
+head(df)
+```
+```{r}
+#convert df to time series
+x = ts(df,start = c(1931,1),end=c(1972,6),frequency = 12)
+plot(x)
+```
+```{r}
+#plot auto correlogram 
+acf(x)
+```
+```{r}
+pacf(x)
+```
+```{r}
+library(forecast)
+seasonplot(x)
+```
+```{r}
+
+```
+

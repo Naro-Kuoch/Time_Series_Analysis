@@ -1,0 +1,42 @@
+---
+title: "day1_co2"
+output: html_document
+date: "2026-06-19"
+---
+
+```{r}
+x = co2
+head(x)
+```
+
+```{r}
+plot(x)
+```
+```{r}
+ train = window(x,end=c(1989,12))
+test = window(x,start = c(1990,1))
+```
+```{r}
+plot(train,xlim=c(1960,2000),ylim=c(min(x),max(x)))
+lines(test,lty=2,col=2)
+```
+```{r}
+# simple exponential smoothing
+ses = HoltWinters(train,beta = FALSE,gamma = FALSE)
+p_ses = predict(ses,n.ahead = length(test))
+ses_MAPE = 100*mean(abs(p_ses-test)/test)
+plot(train,xlim=c(1960,2000),ylim=c(min(x),max(x)))
+lines(p_ses,col=2)
+lines(test,lty=2,col=4)
+```
+
+```{r}
+ahw = HoltWinters(train,alpha=NULL,beta = NULL,gamma=NULL,seasonal = "additive")
+p_ahw = predict(ahw,n.ahead = length(test))
+ahw_MAPE = 100*mean(abs(p_ahw-test)/test)
+plot(train,xlim=c(1960,2000),ylim=c(min(x),max(x)))
+lines(p_ahw,col=2)
+lines(test,lty=2,col=4)
+```
+
+

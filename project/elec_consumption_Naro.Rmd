@@ -1,0 +1,104 @@
+---
+title: "elec_consumption"
+output: pdf_document
+date: "2026-08-03"
+---
+We have the electricity consumption in kW that we want to forecast. 
+We have also the outdoor temperature of the building. 
+the data is collected every 15min from 1/1/2010 1:15 until 2/18/2010 23:45
+
+```{r}
+library(readxl)
+df = read_excel("Elec-train.xlsx")
+#rename column 
+names(df)[names(df) == "Power (kW)"] = "power"
+names(df)[names(df) == "Temp (C°)"] = "temp"
+names(df)[names(df) == "Timestamp"] = "time"
+
+df$time = as.POSIXct(df$time, format = "%m/%d/%Y %H:%M")
+# we work with the data from 1/1/2010 1:15 until 2/18/2010 23:45
+df = df[df$time <= as.POSIXct("2/18/2010 23:45", format = "%m/%d/%Y %H:%M"),]
+
+head(df)
+```
+
+```{r}
+library(xts)
+elect = xts(df$power, order.by = df$time)
+plot(
+  elect,
+  xaxt = "n",
+  type = "l",
+  main = "15-minute Electricity Consumption",
+  xlab = "Day",
+  ylab = "Electricity"
+)
+
+# add daily labels
+days <- seq(
+  as.POSIXct("2010-01-01"),
+  as.POSIXct("2010-02-18"),
+  by = "1 day"
+)
+
+axis(
+  1,
+  at = days,
+  labels = format(days, "%b-%d"),
+  las = 2
+)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+
+# Create date and time-of-day variables
+df_seasonal <- df %>%
+  mutate(
+    date = as.Date(time),
+    time_minutes = as.numeric(format(time, "%H")) * 60 +
+                   as.numeric(format(time, "%M"))
+  )
+
+# Seasonal plot
+ggplot(df_seasonal,
+       aes(x = time_minutes,
+           y = power,
+           group = date,
+           colour = date)) +
+  geom_line(linewidth = 0.5, alpha = 0.7) +
+  scale_x_continuous(
+    breaks = seq(0, 1440, by = 120),
+    labels = sprintf("%02d:%02d",
+                     seq(0, 1440, by = 120) %/% 60,
+                     seq(0, 1440, by = 120) %% 60)
+  ) +
+  labs(
+    title = "Daily Seasonal Pattern of Electricity Consumption",
+    x = "Time of Day",
+    y = "Electricity",
+    colour = "Date"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+We saw that there is daily pattern in this dataset but there are some drops at the beginning of 18th Feb. so i decided to take the last two days for testing so that we don't see a big error for the drop
+```{r}
+filter(df,power==0)
+```
+
+#Spliting dataset
+```{r}
+# split the last two days for testing models 
+df_train = df[df$time <= as.POSIXct("2/16/2010 23:45", format = "%m/%d/%Y %H:%M"),]
+df_test = df[df$time > as.POSIXct("2/16/2010 23:45", format = "%m/%d/%Y %H:%M"),]
+x_train = ts(df_train$power, start = c(1,5),frequency = 24*4)
+```
+
+
+
+

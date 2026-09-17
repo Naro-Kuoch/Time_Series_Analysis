@@ -1,0 +1,276 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+%
+\documentclass[
+]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math} % this also loads fontspec
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage{lmodern}
+\ifPDFTeX\else
+  % xetex/luatex font selection
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{xcolor}
+\usepackage[margin=1in]{geometry}
+\usepackage{color}
+\usepackage{fancyvrb}
+\newcommand{\VerbBar}{|}
+\newcommand{\VERB}{\Verb[commandchars=\\\{\}]}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+% Add ',fontsize=\small' for more characters per line
+\usepackage{framed}
+\definecolor{shadecolor}{RGB}{248,248,248}
+\newenvironment{Shaded}{\begin{snugshade}}{\end{snugshade}}
+\newcommand{\AlertTok}[1]{\textcolor[rgb]{0.94,0.16,0.16}{#1}}
+\newcommand{\AnnotationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\AttributeTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{#1}}
+\newcommand{\BaseNTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\BuiltInTok}[1]{#1}
+\newcommand{\CharTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\CommentTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\CommentVarTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\ConstantTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{#1}}
+\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{#1}}
+\newcommand{\DecValTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\DocumentationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\ErrorTok}[1]{\textcolor[rgb]{0.64,0.00,0.00}{\textbf{#1}}}
+\newcommand{\ExtensionTok}[1]{#1}
+\newcommand{\FloatTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\ImportTok}[1]{#1}
+\newcommand{\InformationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\NormalTok}[1]{#1}
+\newcommand{\OperatorTok}[1]{\textcolor[rgb]{0.81,0.36,0.00}{\textbf{#1}}}
+\newcommand{\OtherTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{#1}}
+\newcommand{\PreprocessorTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\RegionMarkerTok}[1]{#1}
+\newcommand{\SpecialCharTok}[1]{\textcolor[rgb]{0.81,0.36,0.00}{\textbf{#1}}}
+\newcommand{\SpecialStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\StringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\VariableTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\VerbatimStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\WarningTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\usepackage{graphicx}
+\makeatletter
+\newsavebox\pandoc@box
+\newcommand*\pandocbounded[1]{% scales image to fit in text height/width
+  \sbox\pandoc@box{#1}%
+  \Gscale@div\@tempa{\textheight}{\dimexpr\ht\pandoc@box+\dp\pandoc@box\relax}%
+  \Gscale@div\@tempb{\linewidth}{\wd\pandoc@box}%
+  \ifdim\@tempb\p@<\@tempa\p@\let\@tempa\@tempb\fi% select the smaller of both
+  \ifdim\@tempa\p@<\p@\scalebox{\@tempa}{\usebox\pandoc@box}%
+  \else\usebox{\pandoc@box}%
+  \fi%
+}
+% Set default figure placement to htbp
+\def\fps@figure{htbp}
+\makeatother
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+\usepackage{bookmark}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same}
+\hypersetup{
+  pdftitle={Time Series CV CO2},
+  hidelinks,
+  pdfcreator={LaTeX via pandoc}}
+
+\title{Time Series CV CO2}
+\author{}
+\date{\vspace{-2.5em}2026-06-24}
+
+\begin{document}
+\maketitle
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(forecast)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'forecast' was built under R version 4.5.3
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{x }\OtherTok{=}\NormalTok{ co2}
+\CommentTok{\# split the last one year for testing }
+\NormalTok{test}\OtherTok{=} \FunctionTok{window}\NormalTok{(x,}\AttributeTok{start=}\FunctionTok{c}\NormalTok{(}\DecValTok{1997}\NormalTok{,}\DecValTok{1}\NormalTok{))}
+\NormalTok{train }\OtherTok{=} \FunctionTok{window}\NormalTok{(x,}\AttributeTok{end =} \FunctionTok{c}\NormalTok{(}\DecValTok{1996}\NormalTok{,}\DecValTok{12}\NormalTok{))}
+\FunctionTok{autoplot}\NormalTok{(train, }\AttributeTok{series=}\StringTok{"Train"}\NormalTok{)}\SpecialCharTok{+}
+  \FunctionTok{autolayer}\NormalTok{(test,}\AttributeTok{series =} \StringTok{"Test"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\pandocbounded{\includegraphics[keepaspectratio]{ts_co2_cv_files/figure-latex/unnamed-chunk-1-1.pdf}}
+
+\section{Cross validation to compare different
+model}\label{cross-validation-to-compare-different-model}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{mape }\OtherTok{=} \ControlFlowTok{function}\NormalTok{(forecast,truth)\{}
+  \FunctionTok{return}\NormalTok{ (}\DecValTok{100}\SpecialCharTok{*}\FunctionTok{mean}\NormalTok{(}\FunctionTok{abs}\NormalTok{(truth}\SpecialCharTok{{-}}\NormalTok{forecast)}\SpecialCharTok{/}\NormalTok{truth))}
+\NormalTok{\}}
+\CommentTok{\#initialize datafram to store cv result of models }
+\NormalTok{cv\_results }\OtherTok{=} \FunctionTok{data.frame}\NormalTok{(}
+  \AttributeTok{Model =} \FunctionTok{character}\NormalTok{(),}
+  \AttributeTok{Fold =} \FunctionTok{integer}\NormalTok{(),}
+  \AttributeTok{MAPE =} \FunctionTok{numeric}\NormalTok{(),}
+  \AttributeTok{stringsAsFactors =} \ConstantTok{FALSE}
+
+\NormalTok{)}
+
+\NormalTok{start\_year }\OtherTok{=} \FunctionTok{start}\NormalTok{(train)[}\DecValTok{1}\NormalTok{]}
+\NormalTok{end\_year }\OtherTok{=} \FunctionTok{end}\NormalTok{(train)[}\DecValTok{1}\NormalTok{]}
+
+\ControlFlowTok{for}\NormalTok{ (i }\ControlFlowTok{in}\NormalTok{ (start\_year}\SpecialCharTok{+}\DecValTok{1}\NormalTok{)}\SpecialCharTok{:}\NormalTok{(end\_year[}\DecValTok{1}\NormalTok{]}\SpecialCharTok{{-}}\DecValTok{1}\NormalTok{))\{}
+  \CommentTok{\# the first train fold has 24 observations}
+\NormalTok{  train\_fold }\OtherTok{=} \FunctionTok{window}\NormalTok{(train,}\AttributeTok{end =} \FunctionTok{c}\NormalTok{(i,}\DecValTok{12}\NormalTok{))}
+  \CommentTok{\# the validation fold has 12 observation }
+\NormalTok{  val\_fold }\OtherTok{=} \FunctionTok{window}\NormalTok{(train,}\AttributeTok{start=}\FunctionTok{c}\NormalTok{(i}\SpecialCharTok{+}\DecValTok{1}\NormalTok{,}\DecValTok{1}\NormalTok{),}\AttributeTok{end =} \FunctionTok{c}\NormalTok{(i}\SpecialCharTok{+}\DecValTok{1}\NormalTok{,}\DecValTok{12}\NormalTok{))}
+  
+
+  \CommentTok{\#Simple exponential smoothing}
+\NormalTok{  ses }\OtherTok{=} \FunctionTok{HoltWinters}\NormalTok{(train\_fold,}\AttributeTok{alpha =} \ConstantTok{NULL}\NormalTok{,}\AttributeTok{beta =} \ConstantTok{FALSE}\NormalTok{, }\AttributeTok{gamma=}\ConstantTok{FALSE}\NormalTok{)}
+\NormalTok{  ses\_pred }\OtherTok{=} \FunctionTok{predict}\NormalTok{(ses,}\AttributeTok{n.ahead=}\FunctionTok{length}\NormalTok{(val\_fold),)}
+\NormalTok{  cv\_results }\OtherTok{=} \FunctionTok{rbind}\NormalTok{( }
+\NormalTok{                cv\_results,}
+                \FunctionTok{data.frame}\NormalTok{(}
+                  \AttributeTok{Model =} \StringTok{"SES"}\NormalTok{,}
+                  \AttributeTok{Fold =}\NormalTok{ i,}
+                  \AttributeTok{MAPE =} \FunctionTok{mape}\NormalTok{(ses\_pred[,}\StringTok{"fit"}\NormalTok{],val\_fold)}
+\NormalTok{                )}
+\NormalTok{                )}
+  \CommentTok{\# non seasonal exponential smooth}
+\NormalTok{  non\_seasonal }\OtherTok{=} \FunctionTok{HoltWinters}\NormalTok{(train\_fold,}\AttributeTok{alpha =} \ConstantTok{NULL}\NormalTok{,}\AttributeTok{beta =} \ConstantTok{NULL}\NormalTok{,}\AttributeTok{gamma =} \ConstantTok{FALSE}\NormalTok{)}
+\NormalTok{  non\_seasonal\_pred }\OtherTok{=} \FunctionTok{predict}\NormalTok{(non\_seasonal,}\AttributeTok{n.ahead=}\FunctionTok{length}\NormalTok{(val\_fold))}
+\NormalTok{  cv\_results }\OtherTok{=} \FunctionTok{rbind}\NormalTok{( }
+\NormalTok{                cv\_results,}
+                \FunctionTok{data.frame}\NormalTok{(}
+                  \AttributeTok{Model =} \StringTok{"non\_seasonal"}\NormalTok{,}
+                  \AttributeTok{Fold =}\NormalTok{ i,}
+                  \AttributeTok{MAPE =} \FunctionTok{mape}\NormalTok{(non\_seasonal\_pred[,}\StringTok{"fit"}\NormalTok{],val\_fold)}
+\NormalTok{                )}
+\NormalTok{                )}
+  \CommentTok{\#additive seasonal exponential smoothing }
+\NormalTok{  add\_seasonal }\OtherTok{=} \FunctionTok{HoltWinters}\NormalTok{(train\_fold,}\AttributeTok{alpha =} \ConstantTok{NULL}\NormalTok{,}\AttributeTok{beta =} \ConstantTok{NULL}\NormalTok{,}\AttributeTok{gamma =} \ConstantTok{NULL}\NormalTok{)}
+\NormalTok{  add\_seasonal\_pred }\OtherTok{=} \FunctionTok{predict}\NormalTok{(add\_seasonal,}\AttributeTok{n.ahead=}\FunctionTok{length}\NormalTok{(val\_fold))}
+\NormalTok{  cv\_results }\OtherTok{=} \FunctionTok{rbind}\NormalTok{( }
+\NormalTok{                cv\_results,}
+                \FunctionTok{data.frame}\NormalTok{(}
+                  \AttributeTok{Model =} \StringTok{"add\_seasonal"}\NormalTok{,}
+                  \AttributeTok{Fold =}\NormalTok{ i,}
+                  \AttributeTok{MAPE =} \FunctionTok{mape}\NormalTok{(add\_seasonal\_pred[,}\StringTok{"fit"}\NormalTok{],val\_fold)}
+\NormalTok{                )}
+\NormalTok{                )}
+  \CommentTok{\#multiplicative seasonal }
+\NormalTok{  multi\_seasonal }\OtherTok{=} \FunctionTok{HoltWinters}\NormalTok{(train\_fold,}\AttributeTok{alpha =} \ConstantTok{NULL}\NormalTok{,}\AttributeTok{beta =} \ConstantTok{NULL}\NormalTok{,}\AttributeTok{gamma =} \ConstantTok{NULL}\NormalTok{, }\AttributeTok{seasonal =} \StringTok{"multi"}\NormalTok{)}
+\NormalTok{  multi\_seasonal\_pred }\OtherTok{=} \FunctionTok{predict}\NormalTok{(multi\_seasonal,}\AttributeTok{n.ahead=}\FunctionTok{length}\NormalTok{(val\_fold))}
+\NormalTok{  cv\_results }\OtherTok{=} \FunctionTok{rbind}\NormalTok{( }
+\NormalTok{              cv\_results,}
+              \FunctionTok{data.frame}\NormalTok{(}
+                \AttributeTok{Model =} \StringTok{"multi\_seasonal"}\NormalTok{,}
+                \AttributeTok{Fold =}\NormalTok{ i,}
+                \AttributeTok{MAPE =} \FunctionTok{mape}\NormalTok{(multi\_seasonal\_pred[,}\StringTok{"fit"}\NormalTok{],val\_fold)}
+\NormalTok{              )}
+\NormalTok{              )}
+
+\NormalTok{\}}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning in HoltWinters(train_fold, alpha = NULL, beta = NULL, gamma = FALSE):
+## optimization difficulties: ERROR: ABNORMAL_TERMINATION_IN_LNSRCH
+## Warning in HoltWinters(train_fold, alpha = NULL, beta = NULL, gamma = FALSE):
+## optimization difficulties: ERROR: ABNORMAL_TERMINATION_IN_LNSRCH
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in HoltWinters(train_fold, alpha = NULL, beta = NULL, gamma = NULL, :
+## optimization difficulties: ERROR: ABNORMAL_TERMINATION_IN_LNSRCH
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{summary\_results }\OtherTok{\textless{}{-}} \FunctionTok{do.call}\NormalTok{(}
+\NormalTok{  data.frame,}
+  \FunctionTok{aggregate}\NormalTok{(}
+\NormalTok{    MAPE }\SpecialCharTok{\textasciitilde{}}\NormalTok{ Model,}
+    \AttributeTok{data =}\NormalTok{ cv\_results,}
+    \AttributeTok{FUN =} \ControlFlowTok{function}\NormalTok{(x)}
+      \FunctionTok{c}\NormalTok{(}
+        \AttributeTok{Mean\_MAPE =} \FunctionTok{mean}\NormalTok{(x, }\AttributeTok{na.rm =} \ConstantTok{TRUE}\NormalTok{),}
+        \AttributeTok{SD\_MAPE   =} \FunctionTok{sd}\NormalTok{(x, }\AttributeTok{na.rm =} \ConstantTok{TRUE}\NormalTok{)}
+\NormalTok{      )}
+\NormalTok{  )}
+\NormalTok{)}
+
+\FunctionTok{print}\NormalTok{(summary\_results)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##            Model MAPE.Mean_MAPE MAPE.SD_MAPE
+## 1   add_seasonal      0.1135635   0.05517814
+## 2 multi_seasonal      0.1109951   0.05256529
+## 3   non_seasonal      1.3978538   0.72163382
+## 4            SES      0.6144831   0.04994032
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# train the best model with the full trianing set }
+\NormalTok{best\_model }\OtherTok{=} \FunctionTok{HoltWinters}\NormalTok{(train,}\AttributeTok{alpha =} \ConstantTok{NULL}\NormalTok{,}\AttributeTok{beta =} \ConstantTok{NULL}\NormalTok{,}\AttributeTok{gamma =} \ConstantTok{NULL}\NormalTok{, }\AttributeTok{seasonal =} \StringTok{"multi"}\NormalTok{)}
+\CommentTok{\# test on the left out dataset}
+\NormalTok{best\_forecast }\OtherTok{=} \FunctionTok{predict}\NormalTok{(best\_model,}\AttributeTok{n.ahead=}\FunctionTok{length}\NormalTok{(test))}
+\FunctionTok{mape}\NormalTok{(best\_forecast[,}\StringTok{"fit"}\NormalTok{],test)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 0.09558458
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{autoplot}\NormalTok{(train, }\AttributeTok{series=}\StringTok{"Train"}\NormalTok{)}\SpecialCharTok{+}
+  \FunctionTok{autolayer}\NormalTok{(test,}\AttributeTok{series =} \StringTok{"Test"}\NormalTok{)}\SpecialCharTok{+}
+  \FunctionTok{autolayer}\NormalTok{(best\_forecast,}\AttributeTok{series =} \StringTok{"Forecast"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\pandocbounded{\includegraphics[keepaspectratio]{ts_co2_cv_files/figure-latex/unnamed-chunk-4-1.pdf}}
+
+\end{document}

@@ -1,0 +1,11 @@
+---
+title: "day4"
+output: pdf_document
+date: "2026-06-26"
+---
+
+```{r}
+library(fpp2)
+autoplot(elecdaily)
+```
+

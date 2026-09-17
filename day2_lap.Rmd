@@ -1,0 +1,36 @@
+---
+title: "times_series_day2_arima"
+output: pdf_document
+date: "2026-06-24"
+---
+```{r}
+
+library(forecast)
+library(fpp2)
+
+```
+```{r}
+data = uschange
+head(data)
+```
+
+
+```{r}
+tail(data)
+```
+```{r}
+autoplot(data[,c("Income","Unemployment")])
+```
+```{r}
+income = data[,"Income"]
+autoplot(income)
+```
+```{r}
+autoplot(diff(income,lag = 4))
+```
+```{r}
+unemployment = data[,'Unemployment']
+m808 = Arima(unemployment,order=c(8,0,8))
+m808
+```
+

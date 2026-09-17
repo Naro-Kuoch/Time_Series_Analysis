@@ -1,0 +1,151 @@
+---
+title: "WNN_Naro_Kuoch"
+output: pdf_document
+date: "2026-08-26"
+---
+Example on how to use WNN forecast function with co2 data set
+```{r}
+#function to forecast time series using WNN algorithm input parameters are: 
+#x is the input time series 
+#w is the window size 
+#h is the forecast horizon
+wnn_forecast = function(x, w, h, k) {
+
+  n = length(x)
+  
+  # Current pattern
+  cci = x[(n - w + 1):n]
+  
+  distances = c()
+  
+  target_values = list()
+  
+  # Search all the past windows and compute the distance from cci
+  for (i in 1:(n - w - h + 1)) {
+    # window slide along the entire the data set 
+    slide_win = x[i:(i + w - 1)]
+    
+    # the target prediction of a window
+    target = x[(i + w):(i + w + h - 1)]
+    
+    # Euclidean distance
+    d = sqrt(sum((cci - slide_win)^2))
+    
+    distances = c(distances, d)
+    
+    target_values[[length(target_values) + 1]] = target
+  
+  }
+
+  # Avoid division by zero
+  distances[distances == 0] <- 1e-10
+  
+  # Find k nearest neighbours
+  idx = order(distances)[1:k]
+  
+  nearest_dist = distances[idx]
+  #the h values next to the k nearest neighbours 
+  cq = target_values[idx]
+  
+  # Weight = 1 / d²
+  
+  weights = 1 / (nearest_dist^2)
+  # Normalize weights
+  
+  weights = weights / sum(weights)
+  
+  # Weighted forecast
+  forecast = rep(0, h)
+  
+  for (j in 1:k) {
+  
+  forecast = forecast + weights[j] * cq[[j]]
+  
+  }
+  
+  return(forecast)
+
+}
+```
+#co2 dataset
+```{r}
+library(forecast)
+library(ggplot2)
+#split the dataset 
+x = co2
+train = window(x,end=c(1996,12))
+test = window(x,start = c(1997,1))
+autoplot(train, series = "train")+
+  autolayer(test, series = "test")
+```
+
+```{r}
+
+# This function is to find the best k and w for wnn with cross validation for a time series 
+# x_train is input training data
+# w_vales is a vectors of candidates for window size 
+# k_values is a vector of candidates for k
+#initial is number of observation of the first training fold,
+# h is the forecast horizon
+
+tune_wnn_cv = function(x_train, w_values, k_values, h = 24, initial = NULL){
+# Default training size before first fold
+  if(is.null(initial)){
+    initial <- max(w_values) + h
+  }
+  results <- data.frame()
+
+  for(w in w_values){
+
+    for(k in k_values){
+
+      cv_errors <- c()
+
+      for(t in seq(initial,length(x_train) - h, by =h) ) {
+        
+        train_fold <- x_train[1:t]
+        
+        valid_fold <- x_train[(t + 1):(t + h)]
+        
+        pred = wnn_forecast(x = train_fold,w = w,h = h,k = k)
+        
+        cv_errors = c(cv_errors, mean(abs(valid_fold - pred)))
+
+      }
+
+      results <- rbind(results,data.frame(
+                                  w = w,
+                                  k = k,
+                                  MAE = mean(cv_errors),
+                                  SD = sd(cv_errors),
+                                  Folds = length(cv_errors)
+                                )
+                   )
+
+    }
+  }
+        
+    return (results[order(results$MAE), ])
+       
+
+}
+#list of candidatees parametes to be select 
+w_values = c(6, 12,24,30,48)
+
+k_values = c(2,5,10,15,20,25)
+
+tune_wnn_cv(train,w_values, k_values, h=12)
+```
+
+#Use WNN to forecast 
+```{r}
+#best parameter found
+w = 24
+k=2
+f = wnn_forecast(train,w=w, k=k, h= length(test) )
+
+autoplot(train, series = "train")+
+  autolayer(test, series = "test")+
+  autolayer(ts(f, frequency = frequency(test), start = start(test)), series = "forecast")
+```
+

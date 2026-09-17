@@ -1,0 +1,1616 @@
+---
+title: "elec_consumption"
+output: pdf_document
+date: "2026-08-03"
+---
+We have the electricity consumption in kW that we want to forecast. 
+We have also the outdoor temperature of the building. 
+the data is collected every 15min from 1/1/2010 1:15 until 2/18/2010 23:45
+
+```{r}
+library(readxl)
+df = read_excel("Elec-train.xlsx")
+#rename column 
+names(df)[names(df) == "Power (kW)"] = "power"
+names(df)[names(df) == "Temp (C°)"] = "temp"
+names(df)[names(df) == "Timestamp"] = "time"
+#format time
+df$time = as.POSIXct(df$time, format = "%m/%d/%Y %H:%M")
+# we work with the data from 1/1/2010 1:15 until 2/18/2010 23:45
+df = df[df$time <= as.POSIXct("2/18/2010 23:45", format = "%m/%d/%Y %H:%M"),]
+
+head(df)
+```
+
+```{r}
+library(xts)
+
+elect = xts(df$power, order.by = df$time)
+temp = xts(df$temp, order.by = df$time)
+
+plot(
+  elect,
+  xaxt = "n",
+  type = "l",
+  main = "15-minute Electricity Consumption",
+  xlab = "Day",
+  ylab = "Electricity"
+)
+
+# add daily labels
+days <- seq(
+  as.POSIXct("2010-01-01"),
+  as.POSIXct("2010-02-18"),
+  by = "1 day"
+)
+
+axis(
+  1,
+  at = days,
+  labels = format(days, "%b-%d"),
+  las = 2
+)
+```
+
+We can see that there is daily pattern in this data set: 
+- mid night until 8 am, the power consumption is around 150 to 200
+- 8 until 18, the power consumption is about 250 to 300 
+- 18 until 23, the consumption is around 300 to 350. 
+
+However there are some drops at the beginning of 18th Feb. so I decided to take the last two days as testing set so that we don't see a big error due to these drops. 
+
+#Spliting dataset
+
+```{r}
+# split the last two days for testing models 
+df_train = df[df$time <= as.POSIXct("2/16/2010 23:45", format = "%m/%d/%Y %H:%M"),]
+df_test = df[df$time > as.POSIXct("2/16/2010 23:45", format = "%m/%d/%Y %H:%M"),]
+
+x_train = ts(df_train$power, start = c(1,6),frequency = 24*4)
+x_test = ts(df_test$power, frequency = 24*4, start = end(x_train) + c(0,1))
+
+```
+
+
+# Exponential models: 
+## Simple exponential smooth: 
+```{r}
+library(forecast)
+mape = function(pred, truth){
+    mean( abs(truth - pred)/truth)*100 
+}
+mae <- function(pred, truth) {
+
+  mean(abs(truth - pred))
+
+}
+
+ses = HoltWinters(x_train, alpha = NULL,beta=FALSE, gamma = FALSE)
+p_ses = predict(ses, n.ahead = length(x_test))
+ses_mae = mae(p_ses,x_test)
+print(ses_mae)
+
+autoplot(x_test, series = "test data") + 
+  autolayer(p_ses, series = "SES forecast")
+
+```
+##non seasonal Holt-winter smoothing
+```{r}
+
+nonseasonal_hw = HoltWinters(x_train, alpha = NULL,beta=NULL, gamma = FALSE )
+p_nonseasonal = predict(nonseasonal_hw, n.ahead = length(x_test))
+nonseasonal_mae = mae(p_nonseasonal,x_test)
+print(nonseasonal_mae)
+autoplot(x_test, series = "test data")+
+  autolayer(p_nonseasonal, series = "non seasonal HW")
+```
+
+
+```{r}
+# additive seasonal holt winter
+additive_seasonal = HoltWinters(x_train, alpha = NULL, beta = NULL, gamma = NULL, seasonal = "additive")
+p_add_seasonal = predict(additive_seasonal,n.ahead = length(x_test))
+add_seasonal_mae = mae(p_add_seasonal,x_test)
+print(add_seasonal_mae)
+autoplot(x_test, series = "test data")+
+  autolayer(p_add_seasonal, series = "additive seasonal HW")
+```
+
+```{r}
+# multiplicative seasonal holt winter 
+multi_seasonal  = HoltWinters(x_train, alpha = NULL, beta = NULL, gamma = NULL, seasonal = "multi")
+p_multi_seasonal = predict(multi_seasonal,n.ahead = length(x_test))
+multi_seasonal_mae = mae(p_multi_seasonal,x_test)
+print(multi_seasonal_mae)
+
+autoplot(x_test, series = "test data") +
+  autolayer(p_multi_seasonal, series = "multiplicative seasonal HW")
+
+```
+```{r}
+# with damped 
+
+# non seasonal holt winter with damped
+nonseason_damped = holt(x_train,h = length(x_test), damped = TRUE)
+nonseason_damped_mae = mae(nonseason_damped$mean, x_test)
+# additive seaonal
+
+add_season_damped = hw(x_train, h = length(x_test), seasonal = 'additive',damped=TRUE)
+add_season_damped_mae = mae(add_season_damped$mean, x_test)
+#multiplicative seasonal 
+multi_seasonal_damped = hw(x_train, h = length(x_test),seasonal = 'multiplicative',damped=TRUE)
+multi_seasonal_damped_mae = mae(multi_seasonal_damped$mean, x_test)
+```
+The function hw doesn't work when the data has frequency = 96. 
+
+```{r}
+# aggregate data to hourly 
+df_hourly <- df %>%
+  mutate(time = as.POSIXct(format(time, "%Y-%m-%d %H:00:00"))) %>%
+  group_by(time) %>%
+  summarise(power = sum(power) , temp = mean(temp))
+
+df_h_train = df_hourly[df_hourly$time < as.POSIXct("2/17/2010", format = "%m/%d/%Y"),]
+# take the last two days as testing set
+df_h_test = df_hourly[df_hourly$time >= as.POSIXct("2/17/2010 ", format = "%m/%d/%Y"),]
+
+xh_train = ts(df_h_train$power, frequency = 24)
+xh_test = ts(df_h_test$power, frequency = 24, start = end(xh_train) + c(0,1))
+z = ts(df_hourly$temp, frequency = 24)
+zh_train = ts(df_h_train$temp, frequency = 24)
+zh_test = ts(df_h_test$temp, frequency = 24, start = end(zh_train) + c(0,1))
+
+autoplot(xh_train, series = "train") +
+ autolayer(xh_test,series='Test') +
+  autolayer(z, series="temperature")
+```
+Perform cross validation with the training set by taking the first 2 days as training and the next one day as validation. The training window move forward by one day at each iteration. 
+```{r}
+
+#initialize datafram to store CV result of models 
+cv_results = data.frame(
+  Model = character(),
+  Fold = integer(),
+  MAPE = numeric(),
+  stringsAsFactors = FALSE
+
+)
+cv_res = list()
+
+# take the first 4 days as the first training fold 
+start_tail = 4
+# leave the last one day (day 46th) as the last validation fold
+end_tail = 46
+
+for (i in start_tail:end_tail){
+  # the first train fold has 71 observations, on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+  
+
+  #Simple exponential smoothing
+  ses = HoltWinters(train_fold,alpha = NULL,beta = FALSE, gamma=FALSE)
+  ses_pred = predict(ses,n.ahead=length(val_fold),)
+
+  cv_results = rbind(
+                cv_results,
+                data.frame(
+                  Model = "SES",
+                  Fold = i,
+                  MAPE = mape(ses_pred[,"fit"],val_fold)
+                )
+                )
+  # non seasonal exponential smooth
+  non_seasonal = HoltWinters(train_fold,alpha = NULL,beta = NULL,gamma = FALSE)
+  non_seasonal_pred = predict(non_seasonal,n.ahead=length(val_fold))
+  cv_results = rbind( 
+                cv_results,
+                data.frame(
+                  Model = "non_seasonal",
+                  Fold = i,
+                  MAPE = mape(non_seasonal_pred[,"fit"],val_fold)
+                )
+                )
+  #additive seasonal exponential smoothing 
+  add_seasonal = HoltWinters(train_fold,alpha = NULL,beta = NULL,gamma = NULL)
+  add_seasonal_pred = predict(add_seasonal,n.ahead=length(val_fold))
+  cv_results = rbind( 
+                cv_results,
+                data.frame(
+                  Model = "add_seasonal",
+                  Fold = i,
+                  MAPE = mape(add_seasonal_pred[,"fit"],val_fold)
+                )
+                )
+  #multiplicative seasonal 
+  multi_seasonal = HoltWinters(train_fold,alpha = NULL,beta = NULL,gamma = NULL, seasonal = "multi")
+  multi_seasonal_pred = predict(multi_seasonal,n.ahead=length(val_fold))
+  cv_results = rbind( 
+              cv_results,
+              data.frame(
+                Model = "multi_seasonal",
+                Fold = i,
+                MAPE = mape(multi_seasonal_pred[,"fit"],val_fold)
+              )
+              )
+  #non-seasonal with damped 
+  nonseason_damped = holt(train_fold ,h = length(val_fold), damped = TRUE)
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "non_seasonal_damped",
+                    Fold = i,
+                    MAPE = mape(nonseason_damped$mean,val_fold)
+                  )
+                )
+  # additive seasonal with damped         
+  add_seasonal_damped = hw(train_fold, h = length(val_fold), seasonal = 'additive',damped=TRUE)
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "additive_seasonal_damped",
+                    Fold = i,
+                    MAPE = mape(add_seasonal_damped$mean,val_fold)
+                  )
+                )
+  #mulipilcative seasonal with damped
+  multi_seasonal_damped = hw(train_fold, h = length(val_fold),seasonal = 'multiplicative',damped=TRUE)
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "multi_seasonal_damped",
+                    Fold = i,
+                    MAPE = mape(multi_seasonal_damped$mean,val_fold)
+                  )
+                )
+
+}
+
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+
+We see that the multiplicative seasonal Holt winter has the lower error among all the other exponential smoothing models
+
+Now we try to see the residual if they have some pattern: 
+```{r}
+autoplot(decompose(xh_train, type = "additive"))
+```
+we see that there are some seaonal patterns so we transform the data to be stationary
+```{r}
+r = diff(xh_train,lag = 24)
+autoplot(r)
+```
+
+
+```{r}
+ggseasonplot(r)
+```
+now we see that there is no more seasonal pattern in the residuals. 
+
+now we need to check if the residual is correlated or just white noise
+
+```{r}
+ggtsdisplay(r)
+```
+From this plot we see there are significant correlations in the residual. to confirm this we perform Box Test 
+```{r}
+Box.test(r,lag = 28)
+```
+Since he p-value is smaller than 0.05, we can reject the null hypothesis that it is a white noise and accept the alternative hypothesis that there are correlations in the residuals. 
+
+
+From the partial autocorrelation we see that we have exponential decreased for each season and in autocorrelation plot we see that after the first season there is no significant. so we can try seasonal moving average arima(0,0,0)(0,1,1)24
+
+```{r}
+
+
+for (i in start_tail:end_tail){
+  # the first train fold has 71 observations which is 3 days and on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+  
+  arima = Arima(train_fold,order =c(0,0,0), seasonal = c(0,1,1))
+  arima_pred = forecast(arima,h=length(val_fold))
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "arima(0,0,0)(0,1,1)24",
+                    Fold = i,
+                    MAPE = mape(arima_pred$mean,val_fold)
+                  )
+                )
+  
+}
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+
+```
+We can see that  arima(0,0,0)(0,1,1)24 has the lowest error compare to the other models. 
+
+Now we check if there are still correlation in residuals of arima(0,0,0)(0,1,1)24. 
+```{r}
+a = arima(xh_train,order =c(0,0,0), seasonal = c(0,1,1))
+ggtsdisplay(residuals(a))
+
+```
+```{r}
+Box.test(residuals(a),lag = 25)
+```
+
+There are still significant correlation in the residuals.
+
+In the ACF plot of the residuals we see the decrease of autocorrelation and in the PACF we see that after the lag 3 there is no more significant autocorrelations so we can try autoregressive of order 3:  arima(3,0,0)(0,1,1)
+
+```{r}
+a2 = arima(xh_train,order =c(3,0,0), seasonal = c(0,1,1))
+ggtsdisplay(residuals(a2))
+```
+```{r}
+Box.test(residuals(a2),lag = 28)
+```
+Since p-value is less han 0.05 we can reject the null hypothesis that they are white noise and accept the alternative hypothesis that there are still correlations in the residuals. 
+
+Now we if we increase the order of moving average to 3.  
+```{r}
+a3 = arima(xh_train,order =c(3,0,3), seasonal = c(0,1,1))
+ggtsdisplay(residuals(a3))
+```
+
+```{r}
+Box.test(residuals(a3),lag = 28)
+```
+
+Now there is no more correlation in the residuals. 
+we look at auto arima
+```{r}
+auto.arima(xh_train)
+
+```
+```{r}
+a3
+```
+
+We see that the AIC of arima(3,0,3)(0,1,1) is slightly better than the model chosen by auto arima. 
+now we come back to perform cross validation. 
+```{r}
+
+for (i in start_tail:end_tail){
+  # the first train fold has 71 observations, on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+  
+  arima3 = Arima(train_fold, order = c(3,0,3), seasonal = c(0,1,1))
+  arima3_pred = forecast(arima3 , h=length(val_fold))
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "arima(3,0,3)(0,1,1)24",
+                    Fold = i,
+                    MAPE = mape(arima3_pred$mean,val_fold)
+                  )
+                )
+  
+}
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+```{r}
+# auto arima
+for (i in start_tail:end_tail){
+  # the first train fold has 71 observations, on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+  
+  auto_arima = Arima(train_fold, order = c(0,0,4), seasonal = c(1,1,0))
+  auto_arima_pred = forecast(auto_arima , h=length(val_fold))
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "arima(0,0,4)(1,1,0)24",
+                    Fold = i,
+                    MAPE = mape(auto_arima_pred$mean,val_fold)
+                  )
+                )
+  
+}
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+# Neural Network
+Next we try with neural network, first we look at the model that propose automatically
+```{r}
+nn=nnetar(xh_train)
+print(nn)
+
+```
+Now we tune the model using grid search 
+```{r}
+
+# take the last 24 observations from the training set as validation set
+nn_train = head(xh_train, -24)
+nn_val   <- tail(xh_train, 24)
+results <- data.frame()
+
+
+p_values <- c(5, 10, 15, 20,25)
+P_values <- c(0, 1, 2)
+k_values <- c(3, 5, 7, 10)
+
+for (p in p_values) {
+  for (P in P_values) {
+    for (k in k_values) {
+
+      set.seed(123)
+
+      nn <- nnetar(
+        nn_train,
+        p = p,
+        P = P,
+        size = k,
+        repeats = 20
+      )
+
+      pred <- forecast(nn, h = length(nn_val))
+
+      results <- rbind(
+        results,
+        data.frame(
+          p_small = p,
+          P = P,
+          k = k,
+          MAPE =mape(pred$mean,nn_val),
+          MAE = mae(pred$mean,nn_val)
+        )
+      )
+    }
+  }
+}
+
+results <- results[order(results$MAPE), ]
+
+head(results, 10)
+```
+
+From above grid search result, the model with p=25, P=0 and k=3 has the lowest error 
+```{r}
+set.seed(123)
+nn = nnetar(xh_train,p=25,P=0,k=3)
+nn_pred = forecast(nn,h= length(xh_test) )
+mae(nn_pred$mean , xh_test)
+```
+
+we come back to cross validation to compare with other models
+```{r}
+for (i in start_tail:end_tail){
+  
+  # the first train fold has 71 observations, on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+  set.seed(123)
+  nn_auto = nnetar(train_fold, p=25,P=1,k=13)
+  nn_auto_pred = forecast(nn_auto , h=length(val_fold))
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "nn(25,1,13)",
+                    Fold = i,
+                    MAPE = mape(nn_auto_pred$mean,val_fold)
+                  )
+                )
+  
+  nn_tune = nnetar(train_fold, p=25,P=0,k=3)
+  nn_tune_pred = forecast(nn_tune , h=length(val_fold))
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "nn(25,0,3)",
+                    Fold = i,
+                    MAPE = mape(nn_tune_pred$mean,val_fold)
+                  )
+                )
+  
+}
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+
+We see that the neural network models don't have better performance than ARIMA. 
+
+
+Next we have a look at RNN. 
+# RNN
+```{r}
+library(keras3)
+library(tensorflow)
+# build sequences of data
+create_sequences = function(data,window_size){
+  X = list()
+  Y = list()
+  for (i in 1:(length(data)-window_size) ){
+    X[[i]] = data[i:(i+ window_size-1)]
+    Y[[i]] = data[i+ window_size]
+  }
+  X = array(unlist(X), dim=c(length(X), window_size, 1))
+  Y = unlist(Y)
+  return(list(X=X,Y=Y))
+}
+rnn_forecast = function(model, init_seq, h, m,s){
+  preds = numeric(h)
+  input_seq = init_seq
+  for(i in 1:h){
+    input_array = array(input_seq, dim=c(1,length(input_seq),1))
+    next_pred = as.numeric(model %>% predict(input_array, verbose = 0))
+    preds[i] = next_pred
+    input_seq = c(input_seq[-1], as.numeric(next_pred))
+  }
+  preds_denorm = preds * s + m
+  return(preds_denorm)
+}
+
+# hyper param selected
+w = 24
+n_neuron = 10
+epoch = 20
+batch = 64
+
+# take the last 24 observations from the training set as validation set
+
+nn_train = head(xh_train, -w)
+nn_val   = tail(xh_train, w)
+# standardize the dataset with mean and standard deviation 
+m = mean(nn_train)
+s = sd(nn_train)
+
+
+train_norm = (nn_train - m) /s
+val_norm = (nn_val -m)/s
+
+
+
+train_seq = create_sequences(train_norm, window_size = w)
+
+x_train = train_seq$X
+y_train = train_seq$Y
+
+val_data <- c(
+  tail(train_norm, w),
+  val_norm
+)
+
+val_seq <- create_sequences(
+  val_data,
+  window_size = w
+)
+
+x_val = val_seq$X
+y_val = val_seq$Y
+set.seed(123)
+tensorflow::tf$random$set_seed(123)
+#build the model 
+rnn_model=keras_model_sequential() %>%
+  layer_simple_rnn(units=n_neuron, 
+                   activation='tanh',
+                   input_shape= c(w, 1)) %>%
+  layer_dense(units=1)
+
+rnn_model %>% compile(
+          loss = 'mean_squared_error',
+          optimizer = 'adam'
+          )
+
+history = rnn_model %>%fit(
+    x_train,y_train,
+    epochs=epoch,
+    batch_size=batch,
+    validation_data = list(x_val,y_val),
+    shuffle = FALSE
+    )
+```
+```{r}
+plot(history)
+```
+
+#use the full trianing set 
+```{r}
+
+# standardize the dataset with mean and standard deviation 
+
+m = mean(xh_train)
+s = sd(xh_train)
+
+train_norm = (xh_train - m) / s
+train_seq = create_sequences(train_norm, window_size = w)
+
+x_train = train_seq$X
+y_train = train_seq$Y
+
+set.seed(123)
+tensorflow::tf$random$set_seed(123)
+#build the model 
+rnn_model=keras_model_sequential() %>%
+  layer_simple_rnn(units=n_neuron, 
+                   activation='tanh',
+                   input_shape= c(w, 1)) %>%
+  layer_dense(units=1)
+
+rnn_model %>% compile(
+          loss = 'mean_squared_error',
+          optimizer = 'adam'
+          )
+
+rnn_model %>%fit(
+    x_train,y_train,
+    epochs=epoch,
+    batch_size=batch,
+    shuffle = FALSE,
+    verbose = 0
+    )
+
+forecast_input = as.numeric(tail(train_norm,w))
+pred_rnn = rnn_forecast(rnn_model, forecast_input, h=length(xh_test),m,s)
+```
+
+
+```{r}
+a2 = arima(xh_train,order =c(3,0,0), seasonal = c(0,1,1))
+pred_a2 = forecast(a2, h=length(xh_test))
+print(mae(pred_a2$mean, xh_test))
+print(mae(pred_rnn, xh_test))
+autoplot(xh_test, series = "test data")+
+  autolayer(ts(pred_rnn,frequency = 24, start = start(xh_test)), series = "RNN")+
+  autolayer(pred_a2, series = "arima(3,0,0)(0,1,1)24", PI=FALSE)
+```
+We clearly see than RNN perform badly compare to ARIMA model. We can exclude this model from our consideration. 
+
+#Random Forest
+```{r}
+library(randomForest)
+# create input data each row has 25 columns
+set.seed(124)
+create_ml_matrix = function(data, window) {
+  
+  data = as.vector(data)
+  
+  ml_matrix = matrix(
+    nrow = length(data) - window,
+    ncol = window
+  )
+  
+  for (i in 1:(length(data) - window)) {
+    ml_matrix[i, ] <- data[i:(i + window - 1)]
+  }
+  
+  return(ml_matrix)
+}
+#candidates hyperparameters 
+# number of variables that will be randomely selected at each split 
+mtry_values = c(4, 6, 8, 10,15,20,25,30)
+# window size
+window_values = c(6,12,16, 24, 28, 30, 40)
+
+
+results <- data.frame(
+  window = integer(),
+  mtry = integer(),
+  MAE = numeric(),
+  MAPE = numeric()
+)
+
+for (w in window_values){
+  
+  data = create_ml_matrix(data = xh_train, window = w)
+  # take the column 25 as y and the column 1 to 24 as x to fit the model
+  x = data[,1:(w-1), drop = FALSE]
+  y = data[,w]
+  
+  # train validation set split 
+  n = nrow(data)
+  n_train = floor(0.8 * n)
+  x_train = x[1:n_train, ,drop = FALSE]
+  y_train = y[1:n_train]
+  
+  x_val = x[(n_train + 1):n, ,drop=FALSE]
+  y_val = y[(n_train + 1):n]
+  
+  for(m in mtry_values){
+     # Don't allow mtry > number of predictors
+    if (m > ncol(x_train)) next
+      
+    rf =  randomForest(
+        x = x_train,
+        y = y_train,
+        mtry = m,
+        ntree = 500,
+        nodesize = 5)
+    
+    pred = predict(rf,x_val)
+    
+    results = rbind(
+                  results,
+                  data.frame(
+                    window = w,
+                    mtry = m,
+                    MAE = mean(abs(y_val - pred)),
+                    MAPE = 100 * mean(abs((y_val - pred) / y_val))
+                    ))
+    
+  }
+  
+}
+
+
+results <- results[order(results$MAPE), ]
+
+head(results, 20)
+
+```
+
+
+
+Back to perform cross validation with the best hyper parameters we found 
+
+```{r}
+win_size = 30
+mtry = 25
+for (i in start_tail:end_tail){
+  
+  # the first train fold has 71 observations, on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+  
+  set.seed(123)
+
+  
+  d = create_ml_matrix(train_fold,win_size)
+  
+  x_train = d[,1:(win_size-1), drop = FALSE]
+  y_train = d[,win_size]
+  
+  # fit random forest model
+  rf =randomForest(x_train,y_train,mtry = mtry, ntree = 500, nodesize = 5)
+
+   #forecast 
+  
+  # take the last 24 values from training set as input for forecasting 
+  newdata=tail(train_fold,win_size-1)
+  # forcast horizon
+  h = length(val_fold)
+  pred=rep(NULL,h)
+  for(t in 1:h){
+    pred[t] = predict(rf,newdata=newdata)
+    newdata = c(newdata[-1],pred[t])
+  }
+  
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "random forest",
+                    Fold = i,
+                    MAPE = 100 * mean(abs((val_fold - pred) / val_fold))
+                  )
+                )
+
+}
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+Random forest performance is similar to arima(0,0,0)(0,1,1)24. 
+
+#XGBoost 
+```{r}
+library(xgboost)
+max_depth_values <- c(3, 5, 8, 10)
+eta_values <- c(0.01, 0.05, 0.1, 0.3)
+window_values = c(12, 24, 28, 30, 40)
+
+results <- data.frame(
+  window = integer(),
+  max_depth = integer(),
+  learning_rate = numeric(),
+  MAE = numeric(),
+  MAPE = numeric()
+)
+
+for (w in window_values){
+  
+  data = create_ml_matrix(data = xh_train, window = w)
+  # take the column 25 as y and the column 1 to 24 as x to fit the model
+  x = data[,1:(w-1), drop = FALSE]
+  y = data[,w]
+  
+  
+  # train validation set split 
+  n = nrow(data)
+  n_train = floor(0.8 * n)
+  x_train = x[1:n_train, ,drop = FALSE]
+  y_train = y[1:n_train]
+  
+  x_val = x[(n_train + 1):n, ,drop=FALSE]
+  y_val = y[(n_train + 1):n]
+  
+  for(m in max_depth_values){
+   for(lr in eta_values){
+     xg =  xgboost(
+                x = x_train,
+                y = y_train,
+                max_depth = m,
+                learning_rate = lr, 
+                nrounds = 500,
+                nthread = 2,
+                objective = "reg:squarederror"
+            )
+  
+    pred = predict(xg,x_val)
+    
+    results = rbind(
+                  results,
+                  data.frame(
+                    window = w,
+                    max_depth = m,
+                    learning_rate = lr,
+                    MAE = mean(abs(y_val - pred)),
+                    MAPE = 100 * mean(abs((y_val - pred) / y_val))
+                    ))
+     
+     
+        
+   }
+   }
+  
+}
+
+
+results <- results[order(results$MAPE), ]
+
+head(results, 20)
+```
+Back to cross validation 
+```{r}
+win_size = 30
+max_dept = 8
+lr = 0.05
+for (i in start_tail:end_tail){
+  
+  # the first train fold has 71 observations, on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+  
+  set.seed(123)
+
+  
+  d = create_ml_matrix(train_fold,win_size)
+  
+  x_train = d[,1:(win_size-1), drop = FALSE]
+  y_train = d[,win_size]
+  
+  # fit xgboost model
+  xg = xgboost(
+                x = x_train,
+                y = y_train,
+                max_depth = max_dept,
+                learning_rate = lr, 
+                nrounds = 500,
+                nthread = 2,
+                objective = "reg:squarederror"
+            )
+
+   #forecast 
+  
+  # take the last 24 values from training set as input for forecasting 
+  
+  
+  newdata=tail(train_fold,win_size-1)
+  # forcast horizon
+  h = length(val_fold)
+  pred=rep(NULL,h)
+  for(t in 1:h){
+    pred[t] = predict(xg, newdata= matrix(newdata, nrow=1))
+    newdata = c(newdata[-1],pred[t])
+  }
+  
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "xgboost",
+                    Fold = i,
+                    MAPE = 100 * mean(abs((val_fold - pred) / val_fold))
+                  )
+                )
+
+}
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+#SVM
+```{r}
+library(e1071)
+
+for (i in start_tail:end_tail){
+  
+  # the first train fold has 71 observations, on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+  
+  set.seed(123)
+
+  
+  d = create_ml_matrix(train_fold,win_size)
+  
+  x_train = d[,1:(win_size-1), drop = FALSE]
+  y_train = d[,win_size]
+  
+  # fit svm model
+  m_svm = svm(x = x_train,y = y_train)
+            
+
+   #forecast 
+  
+  # take the last 24 values from training set as input for forecasting 
+  newdata=tail(train_fold,win_size-1)
+  # forcast horizon
+  h = length(val_fold)
+  pred=rep(NULL,h)
+  for(t in 1:h){
+    pred[t] = predict(m_svm, newdata= matrix(newdata, nrow=1))
+    newdata = c(newdata[-1],pred[t])
+  }
+  
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "svm",
+                    Fold = i,
+                    MAPE = 100 * mean(abs((val_fold - pred) / val_fold))
+                  )
+                )
+
+}
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+#Forcast with covariate
+now we try to forecast the electricity consumption with outdoor temperature. 
+```{r}
+plot(df_hourly$temp, df_hourly$power)
+```
+
+We look at the plot above we don't see any clear relationship between the temperature and power consumption. 
+```{r}
+f_lm = tslm(xh_train ~ zh_train + season + trend)
+summary(f_lm)
+```
+From this tslm summary, we see that most of the coeficient are significant, and we have positive coefficient for the temperature and the trend is negative. 
+
+```{r}
+#checkresiduals(f_lm, test='LB', lag = 24)
+res = f_lm$residuals
+ggtsdisplay(res)
+```
+There are still correlation in the residuals so we can't use all the calculation done in tslm function. 
+# Dynamic regressin model 
+```{r}
+rr = diff(r,lag = 24)
+ggtsdisplay(rr)
+```
+
+```{r}
+m_arima = Arima(rr,order = c(3,0,3), seasonal = c(0,1,2))
+res2 = m_arima$residuals
+ggtsdisplay(res2)
+```
+```{r}
+Box.test(res2, lag = 28, type = "Ljung-Box")
+
+```
+```{r}
+m = Arima(xh_train,xreg = zh_train, order = c(3,0,3), seasonal = c(0,1,2))
+rm = m$residuals
+ggtsdisplay(rm)
+```
+```{r}
+Box.test(rm,type="Ljung-Box", lag = 48)
+```
+
+
+```{r}
+m_auto = auto.arima(xh_train, xreg = zh_train)
+m_auto
+```
+```{r}
+res_auto = m_auto$residuals
+ggtsdisplay(res_auto)
+```
+There are still correlation with the auto arima
+```{r}
+for (i in start_tail:end_tail){
+  # the first train fold has 71 observations, on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+  
+  z_train_fold = window(zh_train, end = c(i,23))
+  z_val_fold = window(zh_train ,start=c(i,24),end = c(i+1,23))
+  
+  arima_covar = Arima(train_fold ,xreg = z_train_fold, order = c(0,0,0), seasonal = c(0,1,1))
+  pred_arima_covar = forecast(arima_covar , h=h, xreg = z_train_fold)
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "arima_covar(0,0,0)(0,1,1)24",
+                    Fold = i,
+                    MAPE = mape(pred_arima_covar$mean,val_fold)
+                  )
+                )
+  
+  arima_covar_auto = Arima(train_fold ,xreg = z_train_fold, order = c(0,0,2), seasonal = c(1,1,0))
+  pred_arima_covar_auto = forecast(arima_covar_auto , h=h, xreg = z_train_fold)
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "arima_covar(0,0,2)(1,1,0)24",
+                    Fold = i,
+                    MAPE = mape(pred_arima_covar_auto$mean,val_fold)
+                  )
+                )
+  
+}
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+We see that the ARIMA models with covariate don't have better performance that the arima(0,0,0)(0,1,1)24
+# Neural network with covariate  
+```{r}
+for (i in start_tail:end_tail){
+  
+  # the first train fold has 71 observations, on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+  
+  z_train_fold = window(zh_train, end = c(i,23))
+  z_val_fold = window(zh_train ,start=c(i,24),end = c(i+1,23))
+  
+  set.seed(123)
+  nn_covar = nnetar(train_fold, p=25,P=0,k=3, xreg = z_train_fold)
+  nn_covar_pred = forecast(nn_covar , h=length(val_fold),xreg = z_val_fold)
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "nn_covar(25,0,3)",
+                    Fold = i,
+                    MAPE = mape(nn_covar_pred$mean,val_fold)
+                  )
+                )
+  
+}
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+
+# Random Forest with Covariate
+```{r}
+# y = series to be forecast
+# x = covariate whose future values are known
+create_ml_matrix_cov = function(y, x, window) {
+  
+  y = as.vector(y)
+  x = as.vector(x)
+  
+  ml_matrix = matrix(
+    nrow = length(y) - window,
+    ncol = 2 * window - 1
+  )
+  
+  for (i in 1:(length(y) - window)) {
+    
+    # Previous y values
+    y_lags = y[i:(i + window - 2)]
+    
+    # Previous + current x values
+    x_cov = x[i:(i + window - 1)]
+    
+    ml_matrix[i, ] <- c(
+      y_lags,
+      x_cov
+    )
+  }
+  colnames(ml_matrix) <- c(
+  paste0("x_lag_", (window - 1):1),
+  paste0("co_lag_", (window - 1):0)
+)
+  
+  return(ml_matrix)
+}
+```
+
+```{r}
+win_size = 30
+mtry = 25
+start_tail = 4
+# leave the last one day (day 46th) as the last validation fold
+end_tail = 46
+for (i in start_tail:end_tail){
+  
+  # the first train fold has 71 observations, on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+  z_train = window(zh_train, end = c(i,23))
+  z_val = window(zh_train,start=c(i,24),end = c(i+1,23))
+  
+  set.seed(123)
+
+  
+  d = create_ml_matrix_cov(train_fold, z_train, win_size)
+  
+  x_train = d
+ 
+  y_train = tail(
+    train_fold,
+    nrow(x_train)
+  )
+
+  # fit random forest model
+  rf_cov =randomForest(x_train,y_train,mtry = mtry, ntree = 500, nodesize = 5)
+
+   #forecast
+  
+  # Last observed values
+  x_window <- tail(
+    train_fold,
+    win_size - 1
+  )
+  
+  # Last observed covariate values
+  co_window <- tail(
+    z_train,
+    win_size - 1
+  )
+  
+  # forcast horizon
+  h = length(val_fold)
+  pred=rep(NULL,h)
+  for(t in 1:h){
+    # the known value of covariate at time t
+    cov_t = z_val[t]
+    rf_input =  c(
+      as.numeric(x_window),
+      as.numeric(co_window),
+      cov_t
+    )
+    # Convert to one-row matrix
+    rf_input <- matrix(rf_input, nrow = 1)
+    colnames(rf_input) <- colnames(x_train)
+    pred[t] = predict(rf_cov,newdata=rf_input)
+    #update input
+    x_window = c(x_window[-1],pred[t])
+    co_window = c(co_window[-1],cov_t)
+  
+  }
+
+
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "random forest with covariate",
+                    Fold = i,
+                    MAPE = 100 * mean(abs((val_fold - pred) / val_fold))
+                  )
+                )
+
+}
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+
+# XGBoost with covariate
+```{r}
+win_size = 30
+max_dept = 8
+lr = 0.05
+
+for (i in start_tail:end_tail){
+  
+  # the first train fold has 71 observations, on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+  z_train = window(zh_train, end = c(i,23))
+  z_val = window(zh_train,start=c(i,24),end = c(i+1,23))
+  
+  set.seed(123)
+
+  
+  d = create_ml_matrix_cov(train_fold, z_train, win_size)
+  
+  x_train = d
+ 
+  y_train = as.numeric(
+                  tail(
+                  train_fold,
+                  nrow(x_train)
+                  ))
+
+  # fit XGBoost model
+   xg_cov = xgboost(
+                x = x_train,
+                y = y_train,
+                max_depth = max_dept,
+                learning_rate = lr, 
+                nrounds = 500,
+                nthread = 2,
+                objective = "reg:squarederror"
+            )
+
+   #forecast
+  
+  # Last observed values
+  x_window <- tail(
+    train_fold,
+    win_size - 1
+  )
+  
+  # Last observed covariate values
+  co_window <- tail(
+    z_train,
+    win_size - 1
+  )
+  
+  # forcast horizon
+  h = length(val_fold)
+  pred=rep(NULL,h)
+  for(t in 1:h){
+    # the known value of covariate at time t
+    cov_t = z_val[t]
+    xg_input =  c(
+      as.numeric(x_window),
+      as.numeric(co_window),
+      cov_t
+    )
+    # Convert to one-row matrix
+    xg_input <- matrix(xg_input, nrow = 1)
+    colnames(xg_input) <- colnames(x_train)
+    
+    pred[t] = predict(xg_cov,newdata=xg_input)
+    #update input
+    x_window = c(x_window[-1],pred[t])
+    co_window = c(co_window[-1],cov_t)
+  
+  }
+
+
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "XGBoost with covariate",
+                    Fold = i,
+                    MAPE = 100 * mean(abs((val_fold - pred) / val_fold))
+                  )
+                )
+
+}
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+
+We can see that the covariate doesn't help to improve forecast. This is because it doesn't have relationship with the power consumption. 
+# compare models on test set
+```{r}
+test_err = data.frame(
+  Model = character(),
+  MAE = numeric(),
+  stringsAsFactors = FALSE
+
+)
+h = length(xh_test)
+arima1 = Arima(xh_train, order = c(0,0,0), seasonal = c(0,1,1))
+pred_arima1 = forecast(arima1,h=h)
+test_err = rbind(test_err,
+                 data.frame(Model = "Arima(0,0,0)(0,1,1)", MAE = mae(pred_arima1$mean,xh_test))
+                )
+
+arima2 = Arima(xh_train, order = c(3,0,3), seasonal = c(0,1,1))
+pred_arima2 = forecast(arima2,h=h)
+test_err = rbind(test_err,
+                 data.frame(Model = "Arima(3,0,3)(0,1,1)", MAE = mae(pred_arima2$mean,xh_test))
+                 )
+
+auto_arima = Arima(xh_train, order = c(0,0,4), seasonal = c(1,1,0))
+pred_arima_auto = forecast(auto_arima,h=h)
+test_err = rbind(test_err,data.frame(
+              Model = "Arima(0,0,4)(1,1,0)", MAE = mae(pred_arima_auto$mean,xh_test))
+              )
+
+nn = nnetar(xh_train, p=25,P=0,k=3)
+pred_nn = forecast(nn,h=h)
+test_err = rbind(test_err,data.frame(
+            Model = "nn", MAE = mae(pred_nn$mean,xh_test))
+            )
+#Random Forest
+d = create_ml_matrix(xh_train,win_size)
+x_train = d[,1:(win_size-1), drop = FALSE]
+y_train = d[,win_size]
+  
+# fit random forest model
+rf =randomForest(x_train,y_train,mtry = mtry, ntree = 500, nodesize = 5)
+
+# take the last 24 values from training set as input for forecasting 
+newdata=tail(xh_train,win_size-1)
+pred_rf=rep(NULL,h)
+for(t in 1:h){
+  pred_rf[t] = predict(rf,newdata=newdata)
+  newdata = c(newdata[-1],pred_rf[t])
+}
+pred_rf_ts = ts(pred_rf, frequency = 24, start = start(xh_test))
+test_err = rbind(test_err, data.frame(
+          Model = "Random Forest",
+          MAE = mae(pred_rf_ts,xh_test)
+))
+
+#XGBoost
+xgb = xgboost(
+                x = x_train,
+                y = y_train,
+                max_depth = max_dept,
+                learning_rate = lr, 
+                nrounds = 500,
+                nthread = 2,
+                objective = "reg:squarederror"
+            )
+# take the last 24 values from training set as input for forecasting 
+newdata=tail(xh_train,win_size-1)
+# forcast horizon
+
+newdata=tail(xh_train,win_size-1)
+pred_xg=rep(NULL,h)
+for(t in 1:h){
+  pred_xg[t] = predict(xgb,newdata=matrix(newdata, nrow=1))
+  newdata = c(newdata[-1],pred_xg[t])
+}
+pred_xg_ts = ts(pred_xg, frequency = 24, start = start(xh_test))
+test_err = rbind(test_err, data.frame(
+          Model = "XgBoost",
+          MAE = mae(pred_xg_ts,xh_test)
+))
+arima_co = Arima(xh_train ,xreg = zh_train, order = c(3,0,3), seasonal = c(0,1,2))
+pred_arima_co = forecast(arima_co , h=h, xreg = zh_test)
+test_err = rbind(test_err, data.frame(
+          Model = "Arima_covariate",
+          MAE = mae(pred_arima_co$mean,xh_test)
+))
+arima_co1 = Arima(xh_train ,xreg = zh_train, order = c(0,0,0), seasonal = c(0,1,1))
+pred_arima_co1 = forecast(arima_co1 , h=h, xreg = zh_test)
+test_err = rbind(test_err, data.frame(
+          Model = "Arima_covariate(0,0,0)(0,1,1)",
+          MAE = mae(pred_arima_co1$mean,xh_test)
+))
+arima_co2 = Arima(xh_train ,xreg = zh_train, order = c(0,0,1), seasonal = c(1,1,0))
+pred_arima_co2 = forecast(arima_co2 , h=h, xreg = zh_test)
+test_err = rbind(test_err, data.frame(
+          Model = "Arima_covariate(0,0,2)(1,1,0)",
+          MAE = mae(pred_arima_co2$mean,xh_test)
+))
+  
+```
+```{r}
+autoplot(xh_test, series = "Truth") +
+  autolayer(pred_arima1, series="Arima(0,0,0)(0,1,1)", PI=FALSE) +
+  autolayer(pred_arima2, series="Arima(3,0,3)(0,1,1)", PI=FALSE) +
+  autolayer(pred_arima_auto, series="Arima(0,0,4)(1,1,0)", PI=FALSE) +
+  autolayer(pred_nn, series="nn",PI=FALSE)+
+  autolayer(pred_rf_ts, series = "random forest")+
+  autolayer(pred_xg_ts, series = "XgBoost") +
+  autolayer(pred_arima_co, series = "Arima_covariate(3,0,3)(0,1,2)", PI=FALSE)+
+  autolayer(pred_arima_co1, series = "Arima_covariate(0,0,0)(0,1,1)", PI=FALSE)+
+  autolayer(pred_arima_co2, series = "Arima_covariate(0,0,2)(1,1,0)", PI=FALSE)
+```
+```{r}
+test_err
+```
+On the test set we see that performed slightly better than Arima(0,0,0)(0,1,1) however it is just on one test set. so the model to best selected is Arima(0,0,0)(0,1,1) as it has the lowest error on average with Cross validation. so we train this model with all the available dataset with the original frequency. 
+
+Notice that there is some drop in the data, which is not normal compare to other previous values. In order to to make the forecast more accurate, we should impute those missing values.
+```{r}
+library(imputeTS)
+x = ts(df$power, start = c(1,6),frequency = 24*4)
+x[x == 0] <- NA
+ggplot_na_distribution(x)
+x_impute <- na_seadec(
+  x,
+  algorithm = "interpolation"
+)
+
+```
+```{r}
+autoplot(x_impute)
+```
+
+```{r}
+
+x = ts(x_impute, start = c(1,6),frequency = 24*4)
+final_model= Arima(x, order = c(0,0,0), seasonal = c(0,1,1))
+pred_final = forecast(final_model , h= 24*4)
+autoplot(x)+
+  autolayer(pred_final, series = "Forecast")
+```
+#Save the forecast in excel file
+```{r}
+forecast_results <- data.frame(
+  Forecast = as.numeric(pred_final$mean)
+)
+
+library(openxlsx)
+
+write.xlsx(
+  forecast_results,
+  "Naro_KUOCH.xlsx",
+  rowNames = FALSE
+)
+```
+
+

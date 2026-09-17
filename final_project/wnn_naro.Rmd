@@ -1,0 +1,316 @@
+---
+title: "wnn"
+output: pdf_document
+date: "2026-08-25"
+---
+```{r}
+library(readxl)
+df = read_excel("Elec-train.xlsx")
+#rename column 
+names(df)[names(df) == "Power (kW)"] = "power"
+names(df)[names(df) == "Temp (C°)"] = "temp"
+names(df)[names(df) == "Timestamp"] = "time"
+#format time
+df$time = as.POSIXct(df$time, format = "%m/%d/%Y %H:%M")
+# we work with the data from 1/1/2010 1:15 until 2/18/2010 23:45
+df = df[df$time <= as.POSIXct("2/18/2010 23:45", format = "%m/%d/%Y %H:%M"),]
+
+```
+
+```{r}
+library(imputeTS)
+x = ts(df$power,start = c(1,6),frequency = 24 * 4)
+
+x[x == 0]= NA
+x_impute = na_seadec(x,algorithm = "interpolation",find_frequency = FALSE)
+autoplot(x_impute, series = "imputed")+
+  autolayer(x,series = "original")
+```
+
+
+#split the last two days for testing models 
+```{r}
+library(forecast)
+library(ggplot2)
+df$power_impute = x_impute
+df_train <- df[
+    df$time <= as.POSIXct("2/16/2010 23:45",
+    format = "%m/%d/%Y %H:%M"),
+]
+df_valid <- df[
+    df$time > as.POSIXct("2/16/2010 23:45",
+    format = "%m/%d/%Y %H:%M") &
+    df$time <= as.POSIXct("2/17/2010 23:45",
+    format = "%m/%d/%Y %H:%M"),
+]
+# Test: 18 Feb
+df_test <- df[
+  df$time > as.POSIXct("2/17/2010 23:45",
+  format = "%m/%d/%Y %H:%M") ,
+]
+
+x_train <- ts(df_train$power_impute,start = c(1, 6),frequency = 96)
+
+x_valid <- ts(df_valid$power_impute,frequency = 96, start = end(x_train) + c(0,1))
+
+x_test <- ts(df_test$power_impute,frequency = 96, start = end(x_valid) + c(0,1))
+
+autoplot(x_train, series = "train")+
+  autolayer(x_valid, series = "validation")+
+  autolayer(x_test, series = "test")
+```
+```{r}
+tail(df[df$power == 0, ], 20)
+```
+
+
+```{r}
+wnn_forecast = function(x, w, h, k) {
+
+  n = length(x)
+  
+  # Current pattern
+  cci = x[(n - w + 1):n]
+  
+  distances = c()
+  
+  target_values = list()
+  
+  # Search all the past windows and compute the distance from cci
+  for (i in 1:(n - w - h + 1)) {
+    # window slide along the entire the data set 
+    slide_win = x[i:(i + w - 1)]
+    
+    # the target prediction of a window
+    target = x[(i + w):(i + w + h - 1)]
+    
+    # Euclidean distance
+    d = sqrt(sum((cci - slide_win)^2))
+    
+    distances = c(distances, d)
+    
+    target_values[[length(target_values) + 1]] = target
+  
+  }
+
+  # Avoid division by zero
+  distances[distances == 0] <- 1e-10
+  
+  # Find k nearest neighbours
+  idx = order(distances)[1:k]
+  
+  nearest_dist = distances[idx]
+  #the h values next to the k nearest neighbours 
+  cq = target_values[idx]
+  
+  # Weight = 1 / d²
+  
+  weights = 1 / (nearest_dist^2)
+  # Normalize weights
+  
+  weights = weights / sum(weights)
+  
+  # Weighted forecast
+  forecast = rep(0, h)
+  
+  for (j in 1:k) {
+  
+  forecast = forecast + weights[j] * cq[[j]]
+  
+  }
+  
+  return(forecast)
+
+}
+mape = function(pred, truth){
+    mean( abs(truth - pred)/truth)*100 
+}
+mae <- function(pred, truth) {
+
+  mean(abs(truth - pred))
+
+}
+```
+
+```{r}
+w_values = c(24,30,48,24*3,96,96*2 )
+
+k_values = c(5,10,15,20,25,30,35,40)
+tune_wnn = function (w_values, k_values, x_train, x_valid){
+  results = data.frame()
+  for(w in w_values){
+  
+    for(k in k_values){
+      preds = wnn_forecast(x_train,w = w,h = length(x_valid),k = k)
+      err = mae(preds,x_valid)
+      results = rbind(results,data.frame(w = w,k = k,MAE = err))
+  
+    }
+  }
+  results[which.min(results$MAE), ]
+    
+}
+
+tune_wnn_cv = function(x_train, w_values,k_values,h = 24,initial = NULL,metric = mae){
+# Default training size before first fold
+  if(is.null(initial)){
+    initial <- max(w_values) + h
+  }
+  results <- data.frame()
+
+  for(w in w_values){
+
+    for(k in k_values){
+
+      cv_errors <- c()
+
+      for(t in seq(initial,length(x_train) - h, by =h) ) {
+        
+        train_fold <- x_train[1:t]
+        
+        valid_fold <- x_train[(t + 1):(t + h)]
+        
+        pred <- wnn_forecast(x = train_fold,w = w,h = h,k = k)
+        
+        cv_errors <- c(cv_errors,metric(pred,valid_fold))
+
+      }
+
+      results <- rbind(results,data.frame(
+                                  w = w,
+                                  k = k,
+                                  MAE = mean(cv_errors),
+                                  SD = sd(cv_errors),
+                                  Folds = length(cv_errors)
+                                )
+                   )
+
+    }
+
+  }
+
+  list(best = results[which.min(results$MAE), ],
+        results = results[order(results$MAE), ]
+       )
+
+}
+tune_wnn_cv(w_values = w_values, k_values = k_values, x_train = x_train, h = length(x_test))
+```
+
+
+```{r}
+h = length(x_valid)
+k=5
+w = 96
+pred_wnn = wnn_forecast(x_train,w=h,h=h,k=k )
+pred_ts = ts(pred_wnn, start = start(x_valid), frequency = 96)
+print(mape(pred_ts,x_valid))
+autoplot(x_valid, series = "truth")+
+  autolayer(pred_ts, series = "wnn")
+
+```
+```{r}
+library(dplyr)
+df_hourly <- df %>%
+  mutate(time = as.POSIXct(format(time, "%Y-%m-%d %H:00:00"))) %>%
+  group_by(time) %>%
+  summarise(power = sum(power) , temp = mean(temp))
+
+df_h_train = df_hourly[df_hourly$time < as.POSIXct("2/17/2010", format = "%m/%d/%Y"),]
+# take the last two days as testing set
+df_h_test = df_hourly[df_hourly$time >= as.POSIXct("2/17/2010 ", format = "%m/%d/%Y"),]
+
+xh_train = ts(df_h_train$power, frequency = 24)
+xh_test = ts(df_h_test$power, frequency = 24, start = end(xh_train) + c(0,1))
+
+win = c(5,10,12,24,28,30,35,40,48)
+k = c(3,5,8,10,15,20,25,30,35)
+tune_wnn_cv(k_values = k,
+         w_values = win,
+         x_train = xh_train,
+         h=24)
+```
+```{r}
+#initialize datafram to store CV result of models 
+cv_results = data.frame(
+  Model = character(),
+  Fold = integer(),
+  MAPE = numeric(),
+  stringsAsFactors = FALSE
+
+)
+win=35
+k=5
+
+# take the first 4 days as the first training fold 
+start_tail = 4
+# leave the last one day (day 46th) as the last validation fold
+end_tail = 46
+
+for (i in start_tail:end_tail){
+  # the first train fold has 71 observations, on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+
+  # additive seasonal with damped         
+  add_seasonal_damped = hw(train_fold, h = length(val_fold), seasonal = 'additive',damped=TRUE)
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "additive_seasonal_damped",
+                    Fold = i,
+                    MAPE = mape(add_seasonal_damped$mean,val_fold)
+                  )
+                )
+  #mulipilcative seasonal with damped
+  multi_seasonal_damped = hw(train_fold, h = length(val_fold),seasonal = 'multiplicative',damped=TRUE)
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "multi_seasonal_damped",
+                    Fold = i,
+                    MAPE = mape(multi_seasonal_damped$mean,val_fold)
+                  )
+                )
+  #Arima
+  arima = Arima(train_fold,order =c(0,0,0), seasonal = c(0,1,1))
+  arima_pred = forecast(arima,h=length(val_fold))
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "arima(0,0,0)(0,1,1)24",
+                    Fold = i,
+                    MAPE = mape(arima_pred$mean,val_fold)
+                  ))
+  #WNN             
+  pred_wnn = wnn_forecast(train_fold,w=win,h=length(val_fold),k=k)
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "WNN",
+                    Fold = i,
+                    MAPE = mape(pred_wnn,val_fold)
+                  ))
+
+}
+
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+
+
+

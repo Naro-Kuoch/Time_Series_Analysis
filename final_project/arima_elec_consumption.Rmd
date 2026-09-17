@@ -1,0 +1,152 @@
+---
+title: "arima_electric_consumption"
+output: pdf_document
+date: "2026-08-23"
+---
+```{r}
+library(readxl)
+df = read_excel("Elec-train.xlsx")
+#rename column 
+names(df)[names(df) == "Power (kW)"] = "power"
+names(df)[names(df) == "Temp (C°)"] = "temp"
+names(df)[names(df) == "Timestamp"] = "time"
+#format time
+df$time = as.POSIXct(df$time, format = "%m/%d/%Y %H:%M")
+# we work with the data from 1/1/2010 1:15 until 2/18/2010 23:45
+df = df[df$time <= as.POSIXct("2/18/2010 23:45", format = "%m/%d/%Y %H:%M"),]
+
+
+library(ggplot2)
+# aggregate data to hourly 
+df_hourly <- df %>%
+  mutate(time = as.POSIXct(format(time, "%Y-%m-%d %H:00:00"))) %>%
+  group_by(time) %>%
+  summarise(power = sum(power) , temp = mean(temp))
+
+df_h_train = df_hourly[df_hourly$time < as.POSIXct("2/17/2010", format = "%m/%d/%Y"),]
+# take the last two days as testing set
+df_h_test = df_hourly[df_hourly$time >= as.POSIXct("2/17/2010 ", format = "%m/%d/%Y"),]
+
+xh_train = ts(df_h_train$power, frequency = 24)
+xh_test = ts(df_h_test$power, frequency = 24, start = end(xh_train) + c(0,1))
+z = ts(df_hourly$temp, frequency = 24)
+zh_train = ts(df_h_train$temp, frequency = 24)
+zh_test = ts(df_h_test$temp, frequency = 24, start = end(zh_train) + c(0,1))
+
+autoplot(xh_train, series = "train") +
+ autolayer(xh_test,series='Test') +
+  autolayer(z, series="temperature")
+```
+```{r}
+#remove trend and seasonality 
+r = diff(xh_train,lag = 24)
+autoplot(r)
+```
+```{r}
+ggseasonplot(r)
+```
+There seem no more seasonality 
+```{r}
+ggtsdisplay(r)
+```
+From the partial autocorrelation we see that we have exponential decreased for each season and in autocorrelation plot we see that after the first season there is no significant. so we can try seasonal moving average arima(0,0,0)(0,1,1)24
+
+```{r}
+a = arima(xh_train,order =c(0,0,0), seasonal = c(0,1,1))
+ggtsdisplay(residuals(a))
+```
+
+
+
+There are still significant correlation in the residuals.
+
+In the ACF plot of the residuals we see the decrease of autocorrelation and in the PACF we see that after the lag 3 there is no more significant autocorrelations so we can try autoregressive of order 3:  arima(3,0,0)(0,1,1)
+
+```{r}
+a2 = arima(xh_train,order =c(3,0,0), seasonal = c(0,1,1))
+ggtsdisplay(residuals(a2))
+```
+
+```{r}
+Box.test(residuals(a2),lag = 28)
+```
+Since p-value is less han 0.05 we can reject the null hypothesis that they are white noise and accept the alternative hypothesis that there are still correlations in the residuals. 
+
+Now we if we increase the order of moving average to 3.  
+```{r}
+a3 = arima(xh_train,order =c(3,0,3), seasonal = c(0,1,1))
+ggtsdisplay(residuals(a3))
+```
+
+```{r}
+library(forecast)
+mape = function(pred, truth){
+    mean( abs(truth - pred)/truth)*100 
+}
+# take the first 4 days as the first training fold 
+start_tail = 4
+# leave the last one day (day 46th) as the last validation fold
+end_tail = 46
+
+cv_results = data.frame(
+  Model = character(),
+  Fold = integer(),
+  MAPE = numeric(),
+  stringsAsFactors = FALSE
+
+)
+for (i in start_tail:end_tail){
+  # the first train fold has 71 observations which is 3 days and on the 3rd day we take until 23h:00
+  train_fold = window(xh_train,end = c(i,23))
+  # the validation fold has 24 observation, we start from the 4th day at 00h:00
+  val_fold = window(xh_train,start=c(i,24),end = c(i+1,23))
+  
+  arima = Arima(train_fold,order =c(0,0,0), seasonal = c(0,1,1))
+  arima_pred = forecast(arima,h=length(val_fold))
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "arima(0,0,0)(0,1,1)24",
+                    Fold = i,
+                    MAPE = mape(arima_pred$mean,val_fold)
+                  )
+                )
+  
+  arima2 = Arima(train_fold, order =c(3,0,0), seasonal = c(0,1,1))
+  arima_pred2 = forecast(arima2,h=length(val_fold))
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "arima(3,0,0)(0,1,1)24",
+                    Fold = i,
+                    MAPE = mape(arima_pred2$mean,val_fold)
+                  )
+                )
+  arima3 = Arima(train_fold, order =c(3,0,3), seasonal = c(0,1,1))
+  arima_pred3 = forecast(arima3,h=length(val_fold))
+  cv_results = rbind( 
+                  cv_results,
+                  data.frame(
+                    Model = "arima(3,0,3)(0,1,1)24",
+                    Fold = i,
+                    MAPE = mape(arima_pred3$mean,val_fold)
+                  )
+                )
+}
+
+summary_results <- do.call(
+  data.frame,
+  aggregate(
+    MAPE ~ Model,
+    data = cv_results,
+    FUN = function(x)
+      c(
+        Mean_MAPE = mean(x, na.rm = TRUE),
+        SD_MAPE   = sd(x, na.rm = TRUE)
+      )
+  )
+)
+
+print(summary_results)
+```
+
